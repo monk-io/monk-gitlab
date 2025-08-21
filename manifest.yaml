@@ -39,7 +39,7 @@ server:
       env: sshPort
     gitlab-root-password:
       type: string
-      value: <- $gitlab-root-password default("z123z123z123")
+      value: z123z123z123
       env: gitlabRootPassword
     gitlab-omnibus-config:
       type: string
@@ -63,16 +63,19 @@ server:
       port: 22
       protocol: tcp
       host-port: <- $git-ssh-port
+      publish: true
     http:
       container: app
       port: 80
       protocol: tcp
       host-port: 80
+      publish: true
     registry:
       container: app
       port: 5050
       protocol: tcp
       host-port: 5050
+      publish: true
 
 runner:
   defines: runnable
@@ -100,7 +103,7 @@ runner:
   containers:
     runner:
       image: docker.io/gitlab/gitlab-runner
-      image-tag: alpine
+      image-tag: latest
   actions:
     register:
       arguments:
