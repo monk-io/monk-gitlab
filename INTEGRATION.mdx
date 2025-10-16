@@ -1,0 +1,205 @@
+---
+title: GitLab
+description: Ready-to-run GitLab container stack you can run directly or inherit to integrate a complete DevOps platform into your infrastructure.
+primary_category: devops
+tags: [gitlab, git, ci-cd, template, runnable, stack, devops, version-control, runners]
+integration_type: template
+hosting_models: [self-hosted]
+website_url: https://about.gitlab.com/
+docs_url: https://docs.gitlab.com/
+publisher: monk.io
+---
+
+## Overview
+
+This template provides a production‑ready GitLab stack as a Monk runnable. You can:
+
+- Run it directly to get a managed GitLab instance with runner support
+- Inherit it in your own stack to seamlessly add a complete DevOps platform
+
+GitLab is a complete DevOps platform delivered as a single application. It provides Git repository management, issue tracking, code review, CI/CD, and more. This template includes both the GitLab server and GitLab Runner for executing CI/CD pipelines.
+
+## What this template manages
+
+- GitLab CE (Community Edition) server
+- GitLab Runner (for CI/CD job execution)
+- Persistent volumes for repositories, data, logs, and configuration
+- SSH and HTTP/HTTPS access
+- Container Registry for Docker images
+
+## Quick start (run directly)
+
+1) Load templates
+
+```bash
+monk load MANIFEST
+```
+
+2) Run GitLab stack with defaults
+
+```bash
+monk run gitlab/stack
+```
+
+3) Customize credentials (recommended via inheritance)
+
+Running directly uses the defaults defined in this template's `variables`. Secrets added with `monk secrets add` will not affect this runnable unless you inherit it and reference those secrets.
+
+- Preferred: inherit and replace variables with `secret("...")` as shown below.
+- Alternative: fork/clone and edit the `variables` in the manifest files, then `monk load MANIFEST` and run.
+
+Once started (may take several minutes on first launch), access GitLab at the configured URL.
+
+Default root password: `z123z123` (change this in production!)
+
+## Configuration
+
+Key variables you can customize in this template:
+
+```yaml
+variables:
+  ssh-port: "22"                                    # SSH port for git operations
+  gitlab-url: "<- http:// + ip-address-public"     # GitLab instance URL
+  gitlab-root-password: "z123z123"                 # Default root password (env: GITLAB_ROOT_PASSWORD)
+```
+
+Data is persisted under `${monk-volume-path}/gitlab-data` on the host. Configuration, logs, and repository data are stored in separate subdirectories.
+
+## Stack components
+
+The GitLab stack includes the following runnables:
+
+- `gitlab/server` - GitLab CE server (ports 80, 22, 443, 5050)
+- `gitlab/runner` - GitLab Runner for CI/CD
+
+## Register a GitLab Runner
+
+To register a runner with your GitLab instance:
+
+1. Obtain a runner registration token from the GitLab UI (Admin → Runners section)
+2. Run the following command:
+
+```bash
+monk do gitlab/runner/register token=<Token> url=<Your_Gitlab_URL>
+```
+
+## Use by inheritance (recommended for production)
+
+Inherit the GitLab stack in your infrastructure and declare connections. Example:
+
+```yaml
+namespace: mycompany
+gitlab:
+  defines: process-group
+  inherits: gitlab/stack
+  variables:
+    gitlab-url: "https://gitlab.mycompany.com"
+    gitlab-root-password:
+      value: <- secret("gitlab-root-password")
+    ssh-port: "2222"
+api:
+  defines: runnable
+  containers:
+    api:
+      image: myorg/api
+  connections:
+    devops:
+      runnable: gitlab
+      service: gitlab
+  variables:
+    gitlab-host:
+      value: <- connection-hostname("devops")
+```
+
+Then set the secrets once and run your infrastructure:
+
+```bash
+monk secrets add -g gitlab-root-password="STRONG_ROOT_PASSWORD"
+monk run mycompany/gitlab
+```
+
+## Ports and connectivity
+
+- HTTP: Service `gitlab` on TCP port `80`
+- HTTPS: Service `gitlab` on TCP port `443`
+- SSH: TCP port `22` (configurable via `ssh-port` variable)
+- Container Registry: TCP port `5050`
+- From other runnables in the same process group, use `connection-hostname("<connection-name>")` to resolve the GitLab host.
+
+## Persistence and configuration
+
+- Configuration path: `${monk-volume-path}/gitlab-data/config:/etc/gitlab`
+- Data path: `${monk-volume-path}/gitlab-data/data:/var/opt/gitlab`
+- Logs path: `${monk-volume-path}/gitlab-data/logs:/var/log/gitlab`
+
+### Persistency with cloud volumes
+
+If you're using any of the clouds available via Monk, you can use volume definition to spin a disk block device to make your GitLab instance independent from the node it's running on. To do so, uncomment the `volume` block in `manifest.yaml`.
+
+## Features
+
+- **Git Repository Management**: Full-featured Git repository hosting
+- **CI/CD**: Integrated continuous integration and deployment pipelines
+- **Issue Tracking**: Built-in issue and project management
+- **Code Review**: Merge requests with inline commenting
+- **Container Registry**: Built-in Docker registry
+- **Wiki**: Per-project wikis for documentation
+- **Snippets**: Code snippets sharing
+
+## Create your own template with multiple runners
+
+You can create your own template and inherit the defaults to add more runners:
+
+```yaml
+namespace: /gitlab
+
+runner-1:
+  defines: runnable
+  inherits: /gitlab/runner
+
+runner-2:
+  defines: runnable
+  inherits: /gitlab/runner
+
+runner-3:
+  defines: runnable
+  inherits: /gitlab/runner
+
+runner-stack:
+  defines: process-group
+  runnable-list:
+    - /gitlab/runner-1
+    - /gitlab/runner-2
+    - /gitlab/runner-3
+```
+
+
+## Related templates
+
+- High‑availability setup: consider load balancing multiple GitLab instances for production deployments
+- Integrate with artifact repositories: see `nexus/` or `artifactory/` templates for artifact management
+- Database backends: MariaDB, PostgreSQL templates for external database configuration
+
+## Troubleshooting
+
+- GitLab may take 5-10 minutes to fully start on first launch.
+- Ensure sufficient system resources (minimum 4GB RAM, 8GB recommended for production).
+- Check that all required ports are available and not blocked by firewalls.
+- Verify SSH access is properly configured and the SSH port is accessible.
+- If you changed `gitlab-root-password` after initial setup, you may need to reset it inside GitLab or purge the data volume.
+- Ensure the host volumes are writable by the container user.
+- Check logs:
+
+```bash
+monk logs -l 500 -f gitlab/stack
+monk logs -l 500 -f gitlab/server
+```
+
+- If you encounter startup issues, try purging and restarting:
+
+```bash
+monk purge gitlab/server gitlab/runner
+monk purge -x gitlab/server gitlab/runner
+monk run gitlab/stack
+```
+
